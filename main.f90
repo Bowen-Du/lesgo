@@ -39,6 +39,8 @@ use cfl_util
 use sgs_stag_util, only : sgs_stag
 use forcing
 use functions, only: get_tau_wall_bot, get_tau_wall_top
+!add by Mingwei for the interp of w_f
+use functions, only: interp_to_uv_grid 
 
 #ifdef PPMPI
 use mpi
@@ -68,6 +70,7 @@ character (*), parameter :: prog_name = 'main'
 integer :: nca
 character(:), allocatable :: ca
 
+integer :: i, j, k
 integer :: jt_step, nstart
 real(rprec) :: rmsdivvel, ke, maxcfl, tt
 
@@ -82,6 +85,9 @@ real(rprec) :: rbuffer
 real(rprec) :: maxdummy ! Used to calculate maximum with mpi_allreduce
 real(rprec) :: tau_top   ! Used to write top wall stress at first proc
 #endif
+!w_f on uv gridadd by Mingwei to solve static pressure 
+real(rprec), allocatable, dimension(:,:,:) :: w_uv_f
+
 
 ! Initialize MPI
 #ifdef PPMPI
@@ -109,6 +115,7 @@ jt_total = 0
 
 ! Initialize all data
 call initialize()
+allocate(w_uv_f(nx,ny,lbz:nz)) 
 
 if(coord == 0) then
     call clock%stop
@@ -156,6 +163,10 @@ time_loop: do jt_step = nstart, nsteps
     RHSy_f = RHSy
     RHSz_f = RHSz
 
+    !add by Mingwei for the flow filed at last time step (new time step is n+1)
+    u_f = u
+    v_f = v
+    w_f = w
     ! Calculate velocity derivatives
     ! Calculate dudx, dudy, dvdx, dvdy, dwdx, dwdy (in Fourier space)
     call filt_da(u, dudx, dudy, lbz)
@@ -342,7 +353,16 @@ time_loop: do jt_step = nstart, nsteps
     !   uses fx,fy,fz calculated above
     !   for MPI: syncs 1 -> Nz and Nz-1 -> 0 nodes info for u,v,w
     call project ()
-
+!------------add by Mingwei for static pressure-------------------
+    w_uv_f(1:nx,1:ny,lbz:nz) = interp_to_uv_grid(w_f(1:nx,1:ny,lbz:nz), lbz )
+    do i=1,nx
+    do j=1,ny
+    do k=1,nz-1
+        p(i,j,k)=p(i,j,k)-0.5*(u_f(i,j,k)*u_f(i,j,k)+                   &
+                 v_f(i,j,k)*v_f(i,j,k)+w_uv_f(i,j,k)*w_uv_f(i,j,k))
+    end do
+    end do
+    end do
     ! Write ke to file
     if (modulo (jt_total, nenergy) == 0) call energy(ke)
 

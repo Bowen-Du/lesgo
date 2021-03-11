@@ -603,6 +603,8 @@ do
                 call parse_vector( buff(equal_pos+1:), point_nloc, point_loc )
             case ('DOMAIN_CALC')
                 read (buff(equal_pos+1:), *) domain_calc
+            case ('DOMAIN_NPROC')
+                read (buff(equal_pos+1:), *) domain_nproc
             case ('DOMAIN_NSTART')
                 read (buff(equal_pos+1:), *) domain_nstart
             case ('DOMAIN_NEND')

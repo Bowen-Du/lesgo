@@ -246,7 +246,7 @@ type(point3D_t), allocatable, dimension(:) :: point_loc
 
 ! domain instantaneous output
 logical :: domain_calc=.false.
-integer :: domain_nstart=10000, domain_nend=50000, domain_nskip=10000
+integer :: domain_nproc=24,domain_nstart=10000, domain_nend=50000, domain_nskip=10000
 
 ! x-plane instantaneous output
 logical :: xplane_calc=.false.

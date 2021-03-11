@@ -599,6 +599,24 @@ if(point_calc) then
     end if
 end if
 
+! for the writing of pressure, add by Mingwei
+if(point_calc) then
+    if (jt_total >= point_nstart+1 .and. jt_total <= point_nend+1 .and.            &
+        ( mod(jt_total-point_nstart-1,point_nskip)==0) ) then
+        if (jt_total == point_nstart+1) then
+            if (coord == 0) then
+                write(*,*) '-------------------------------'
+                write(*,"(1a,i9,1a,i9)")                                       &
+                    'Writing instantaneous point pressure from ',            &
+                    point_nstart, ' to ', point_nend
+                write(*,"(1a,i9)") 'Iteration skip:', point_nskip
+                write(*,*) '-------------------------------'
+            end if
+        end if
+        call inst_write(12)
+    end if
+end if
+
 !  Determine if instantaneous domain velocities are to be recorded
 if(domain_calc) then
     if (jt_total >= domain_nstart .and. jt_total <= domain_nend .and.          &
@@ -637,6 +655,25 @@ if(xplane_calc) then
     end if
 end if
 
+!add by Mingwei for pressure output
+if(xplane_calc) then
+    if (jt_total >= xplane_nstart+1 .and. jt_total <= xplane_nend+1 .and.          &
+        ( mod(jt_total-xplane_nstart-1,xplane_nskip)==0) ) then
+    if (jt_total == xplane_nstart+1) then
+        if (coord == 0) then
+            write(*,*) '-------------------------------'
+            write(*,"(1a,i9,1a,i9)")                                           &
+                'Writing instantaneous x-plane pressure from ',              &
+                xplane_nstart, ' to ', xplane_nend
+            write(*,"(1a,i9)") 'Iteration skip:', xplane_nskip
+            write(*,*) '-------------------------------'
+            end if
+        end if
+
+        call inst_write(32)
+    end if
+end if
+
 !  Determine if instantaneous y-plane velocities are to be recorded
 if(yplane_calc) then
     if (jt_total >= yplane_nstart .and. jt_total <= yplane_nend .and.          &
@@ -653,6 +690,25 @@ if(yplane_calc) then
         end if
 
         call inst_write(4)
+    end if
+end if
+
+! add by Mingwei for pressure output
+if(yplane_calc) then
+    if (jt_total >= yplane_nstart+1 .and. jt_total <= yplane_nend+1 .and.          &
+        ( mod(jt_total-yplane_nstart-1,yplane_nskip)==0) ) then
+        if (jt_total == yplane_nstart+1) then
+            if (coord == 0) then
+                write(*,*) '-------------------------------'
+                write(*,"(1a,i9,1a,i9)")                                       &
+                    'Writing instantaneous y-plane pressure from ',          &
+                    yplane_nstart, ' to ', yplane_nend
+                write(*,"(1a,i9)") 'Iteration skip:', yplane_nskip
+                write(*,*) '-------------------------------'
+            end if
+        end if
+
+        call inst_write(42)
     end if
 end if
 
@@ -675,6 +731,25 @@ if(zplane_calc) then
     end if
 end if
 
+! add by Mingwei for pressure output
+if(zplane_calc) then
+    if (jt_total >= zplane_nstart+1 .and. jt_total <= zplane_nend+1 .and.          &
+        ( mod(jt_total-zplane_nstart-1,zplane_nskip)==0) ) then
+        if (jt_total == zplane_nstart+1) then
+            if (coord == 0) then
+                write(*,*) '-------------------------------'
+                write(*,"(1a,i9,1a,i9)")                                       &
+                    'Writing instantaneous z-plane pressure from ',          &
+                    zplane_nstart, ' to ', zplane_nend
+                write(*,"(1a,i9)") 'Iteration skip:', zplane_nskip
+                write(*,*) '-------------------------------'
+            end if
+        end if
+
+        call inst_write(52)
+    end if
+end if
+
 end subroutine output_loop
 
 !*******************************************************************************
@@ -684,12 +759,17 @@ subroutine inst_write(itype)
 ! This subroutine is used to write all of the instantaneous data from
 ! lesgo to file. The types of data written are:
 !
-!   points   : itype=1
-!   domain   : itype=2
-!   x-planes : itype=3
-!   y-planes : itype=4
-!   z-planes : itype=5
-!
+!   points   : itype=1: velocity, theta 
+!              itype=12: static pressure
+!   domain   : itype=2: velocity, theta
+!              itype=21: static pressure
+!              itype=22: vorticity
+!   x-planes : itype=3: velocity, theta
+!              itype=32: static pressure
+!   y-planes : itype=4: velocity, theta
+!              itype=42: static pressure
+!   z-planes : itype=5: velocity, theta
+!              itype=52: static pressure
 ! For the points and planar data, this subroutine writes using the
 ! locations specfied from the param module.
 ! If additional instantenous values are
@@ -697,10 +777,11 @@ subroutine inst_write(itype)
 !
 use functions, only : linear_interp, trilinear_interp, interp_to_uv_grid
 use param, only : point_nloc, point_loc
+use param, only : domain_nproc
 use param, only : xplane_nloc, xplane_loc
 use param, only : yplane_nloc, yplane_loc
 use param, only : zplane_nloc, zplane_loc
-use param, only : dx, dy
+use param, only : dx, dy, dt
 use param, only : write_endian
 use grid_m
 use sim_param, only : u, v, w, p
@@ -725,13 +806,14 @@ implicit none
 integer, intent(in) :: itype
 character (64) :: fname
 integer :: n, i, j, k
-real(rprec), allocatable, dimension(:,:,:) :: ui, vi, wi,w_uv
+real(rprec), allocatable, dimension(:,:,:) :: w_uv,ui, vi, wi, pi
+#ifdef PPSCALARS
+real(rprec), allocatable, dimension(:,:,:) :: thetai
+#endif
 real(rprec), pointer, dimension(:) :: x, y, z, zw
 ! Vorticity
 real(rprec), dimension (:,:,:), allocatable :: vortx, vorty, vortz
 
-! Pressure
-real(rprec), dimension(:,:,:), allocatable :: pres_real
 #ifndef PPCGNS
 character(64) :: bin_ext
 
@@ -782,6 +864,48 @@ if(itype==1) then
 #endif
     end do
 
+!!!!
+#ifdef PPSCALARS 
+    do n = 1, point_nloc
+        ! Common file name for all output types
+        call string_splice(fname, path // 'output/scalar.x-', point_loc(n)%xyz(1),&
+            '.y-', point_loc(n)%xyz(2), '.z-', point_loc(n)%xyz(3), '.dat')
+
+#ifdef PPMPI
+        if(point(n) % coord == coord) then
+#endif
+            open(unit=13, position="append", file=fname)
+            write(13,*) total_time,                                            &
+            trilinear_interp(theta(1:nx,1:ny,lbz:nz), lbz, point_loc(n)%xyz)
+            close(13)
+#ifdef PPMPI
+        end if
+#endif
+    end do
+#endif 
+!!end if scalar
+
+!======================================================    
+! itype=12, added by Mingwei for pressure output
+!======================================================
+elseif(itype==12) then
+    do n = 1, point_nloc
+        ! Common file name for all output types
+        call string_splice(fname, path // 'output/pre.x-', point_loc(n)%xyz(1),&
+            '.y-', point_loc(n)%xyz(2), '.z-', point_loc(n)%xyz(3), '.dat')
+
+#ifdef PPMPI
+        if(point(n) % coord == coord) then
+#endif
+            open(unit=13, position="append", file=fname)
+            write(13,*) total_time-dt,                                            &
+            trilinear_interp(p(1:nx,1:ny,lbz:nz), lbz, point_loc(n)%xyz)
+            close(13)
+#ifdef PPMPI
+        end if
+#endif
+    end do
+
 !  Instantaneous write for entire domain
 elseif(itype==2) then
     ! Common file name for all output types
@@ -799,6 +923,7 @@ elseif(itype==2) then
          w_uv(1:nx,1:ny,1:(nz-nz_end)) /) )
 #else
     ! Write binary Output
+if (coord < domain_nproc) then
     call string_concat(fname, bin_ext)
     open(unit=13, file=fname, form='unformatted', convert=write_endian,        &
         access='direct', recl=nx*ny*nz*rprec)
@@ -806,8 +931,58 @@ elseif(itype==2) then
     write(13,rec=2) v(:nx,:ny,1:nz)
     write(13,rec=3) w_uv(:nx,:ny,1:nz)
     close(13)
+endif
 #endif
 
+#ifdef PPSCALARS
+    ! Common file name for all output types
+    call string_splice(fname, path //'output/scalar.', jt_total)
+#if defined(PPCGNS) && defined(PPMPI)
+    ! Write CGNS Output
+    call string_concat(fname, '.cgns')
+    call write_parallel_cgns(fname, nx, ny, nz - nz_end, nz_tot,               &
+     (/ 1, 1,   (nz-1)*coord + 1 /),                                           &
+     (/ nx, ny, (nz-1)*(coord+1) + 1 - nz_end /),                              &
+     x(1:nx) , y(1:ny) , z(1:(nz-nz_end) ),                                    &
+     1, (/ 'Theta' /), (/ theta(1:nx,1:ny,1:(nz-nz_end)) /) )
+#else
+    ! Write binary Output
+if (coord < domain_nproc) then
+    call string_concat(fname, bin_ext)
+    open(unit=13, file=fname, form='unformatted', convert=write_endian,        &
+     access='direct', recl=nx*ny*nz*rprec)
+    write(13,rec=1) theta(:nx,:ny,1:nz)
+    close(13)
+endif
+#endif
+#endif 
+!!end if scalar
+
+elseif(itype==21) then
+    ! Common file name for all output types
+    call string_splice(fname, path //'output/pre.', jt_total)
+
+#if defined(PPCGNS) && defined(PPMPI)
+    ! Write CGNS Output
+    call string_concat(fname, '.cgns')
+    call write_parallel_cgns(fname, nx, ny, nz - nz_end, nz_tot,               &
+        (/ 1, 1,   (nz-1)*coord + 1 /),                                        &
+        (/ nx, ny, (nz-1)*(coord+1) + 1 - nz_end /),                           &
+        x(1:nx) , y(1:ny) , z(1:(nz-nz_end) ),                                 &
+        1, (/ 'Pressure' /), (/ p(1:nx,1:ny,1:(nz-nz_end)) /) )
+
+#else
+    ! Write binary Output
+if (coord < domain_nproc) then
+    call string_concat(fname, bin_ext)
+    open(unit=13, file=fname, form='unformatted', convert=write_endian,        &
+        access='direct', recl=nx*ny*nz*rprec)
+    write(13,rec=1) p(:nx,:ny,1:nz)
+    close(13)
+endif
+#endif
+
+elseif(itype==22) then
     ! Compute vorticity
     allocate(vortx(nx,ny,lbz:nz), vorty(nx,ny,lbz:nz), vortz(nx,ny,lbz:nz))
     vortx(1:nx,1:ny,lbz:nz) = 0._rprec
@@ -841,6 +1016,7 @@ elseif(itype==2) then
 
 #else
     ! Write binary Output
+if (coord < domain_nproc) then
     call string_concat(fname, bin_ext)
     open(unit=13, file=fname, form='unformatted', convert=write_endian,        &
         access='direct', recl=nx*ny*nz*rprec)
@@ -848,63 +1024,10 @@ elseif(itype==2) then
     write(13,rec=2) vorty(:nx,:ny,1:nz)
     write(13,rec=3) vortz(:nx,:ny,1:nz)
     close(13)
+endif
 #endif
 
     deallocate(vortx, vorty, vortz)
-
-    ! Compute pressure
-    allocate(pres_real(nx,ny,lbz:nz))
-    pres_real(1:nx,1:ny,lbz:nz) = 0._rprec
-
-    ! Calculate real pressure
-    pres_real(1:nx,1:ny,lbz:nz) = p(1:nx,1:ny,lbz:nz)                          &
-        - 0.5 * ( u(1:nx,1:ny,lbz:nz)**2                                       &
-        + interp_to_uv_grid( w(1:nx,1:ny,lbz:nz), lbz)**2                      &
-        + v(1:nx,1:ny,lbz:nz)**2 )
-
-    ! Common file name for all output types
-    call string_splice(fname, path //'output/pres.', jt_total)
-
-#if defined(PPCGNS) && defined(PPMPI)
-    ! Write CGNS Output
-    call string_concat(fname, '.cgns')
-    call write_parallel_cgns(fname, nx, ny, nz - nz_end, nz_tot,               &
-        (/ 1, 1,   (nz-1)*coord + 1 /),                                        &
-        (/ nx, ny, (nz-1)*(coord+1) + 1 - nz_end /),                           &
-        x(1:nx) , y(1:ny) , z(1:(nz-nz_end) ),                                 &
-        1, (/ 'Pressure' /), (/ pres_real(1:nx,1:ny,1:(nz-nz_end)) /) )
-
-#else
-    ! Write binary Output
-    call string_concat(fname, bin_ext)
-    open(unit=13, file=fname, form='unformatted', convert=write_endian,        &
-        access='direct', recl=nx*ny*nz*rprec)
-    write(13,rec=1) pres_real(:nx,:ny,1:nz)
-    close(13)
-#endif
-
-     deallocate(pres_real)
-
-#ifdef PPSCALARS
-    ! Common file name for all output types
-    call string_splice(fname, path //'output/theta.', jt_total)
-#if defined(PPCGNS) && defined(PPMPI)
-    ! Write CGNS Output
-    call string_concat(fname, '.cgns')
-    call write_parallel_cgns(fname, nx, ny, nz - nz_end, nz_tot,               &
-     (/ 1, 1,   (nz-1)*coord + 1 /),                                           &
-     (/ nx, ny, (nz-1)*(coord+1) + 1 - nz_end /),                              &
-     x(1:nx) , y(1:ny) , z(1:(nz-nz_end) ),                                    &
-     1, (/ 'Theta' /), (/ theta(1:nx,1:ny,1:(nz-nz_end)) /) )
-#else
-    ! Write binary Output
-    call string_concat(fname, bin_ext)
-    open(unit=13, file=fname, form='unformatted', convert=write_endian,        &
-     access='direct', recl=nx*ny*nz*rprec)
-    write(13,rec=1) theta(:nx,:ny,1:nz)
-    close(13)
-#endif
-#endif
 
 !  Write instantaneous x-plane values
 elseif(itype==3) then
@@ -951,7 +1074,68 @@ elseif(itype==3) then
     end do
 
     deallocate(ui,vi,wi)
+!!!!!!!    
+#ifdef PPSCALARS 
+    allocate(thetai(1,ny,nz))
+    !  Loop over all xplane locations
+    do i = 1, xplane_nloc
+        do k = 1, nz
+            do j = 1, ny
+                thetai(1,j,k) = linear_interp(theta(xplane(i) % istart,j,k),    &
+                     theta(xplane(i) % istart+1,j,k), dx, xplane(i) % ldiff)
+            end do
+        end do
 
+        ! Common file name portion for all output types
+        call string_splice(fname, path // 'output/scalar.x-', xplane_loc(i), '.', jt_total)
+
+#if defined(PPCGNS) && defined(PPMPI)
+        ! Write CGNS Output
+        call string_concat(fname, '.cgns')
+        call write_parallel_cgns (fname,1,ny, nz - nz_end, nz_tot,     &
+                        (/ 1, 1,   (nz-1)*coord + 1 /),                &
+                        (/ 1, ny, (nz-1)*(coord+1) + 1 - nz_end /),    &
+                    xplane_loc(i:i) , y(1:ny) , z(1:(nz-nz_end) ),     &
+              1, ( / 'theta' / ),                                      &
+              ( / thetai(1,1:ny,1:(nz-nz_end)) / ) )
+
+#else
+        ! Write binary output
+        call string_concat(fname, bin_ext)
+        open(unit=13,file=fname,form='unformatted',convert=write_endian, access='direct',recl=ny*nz*rprec)
+        write(13,rec=1) thetai
+        close(13)
+#endif
+    end do
+
+    deallocate(thetai)
+#endif 
+!!end if scalar
+!======================================================
+! the itype 32 is added by Mingwei for pressure output
+!======================================================
+    elseif(itype==32) then
+        allocate(pi(1,ny,nz))
+    
+        !  Loop over all xplane locations
+        do i = 1, xplane_nloc
+            do k = 1, nz
+                do j = 1, ny
+                    pi(1,j,k) = linear_interp(p(xplane(i) % istart,j,k),    &
+                         p(xplane(i) % istart+1,j,k), dx, xplane(i) % ldiff)
+                end do
+            end do
+    
+            ! Common file name portion for all output types
+            call string_splice(fname, path // 'output/pre.x-', xplane_loc(i), '.', jt_total-1)
+    
+            ! Write binary output
+            call string_concat(fname, bin_ext)
+            open(unit=13,file=fname,form='unformatted',convert=write_endian, access='direct',recl=ny*nz*rprec)
+            write(13,rec=1) pi
+            close(13)
+        end do
+        deallocate(pi)
 !  Write instantaneous y-plane values
 elseif(itype==4) then
 
@@ -997,7 +1181,71 @@ elseif(itype==4) then
     end do
 
     deallocate(ui,vi,wi)
+!!!!!!!    
+#ifdef PPSCALARS  
+    allocate(thetai(nx,1,nz))
 
+    !  Loop over all yplane locations
+    do j = 1, yplane_nloc
+        do k = 1, nz
+            do i = 1, nx
+                thetai(i,1,k) = linear_interp(theta(i,yplane(j) % istart,k),           &
+                     theta(i,yplane(j) % istart+1,k), dy, yplane(j) % ldiff)
+            end do
+        end do
+
+        ! Common file name portion for all output types
+        call string_splice(fname, path // 'output/scalar.y-', yplane_loc(j), '.', &
+             jt_total)
+
+#if defined(PPCGNS) && defined(PPMPI)
+        call string_concat(fname, '.cgns')
+        call write_parallel_cgns (fname,nx,1, nz - nz_end, nz_tot,             &
+            (/ 1, 1,   (nz-1)*coord + 1 /),                                    &
+            (/ nx, 1, (nz-1)*(coord+1) + 1 - nz_end /),                        &
+            x(1:nx) , yplane_loc(j:j) , z(1:(nz-nz_end) ),                     &
+            1, ( / 'scalar' / ),                    &
+            ( / thetai(1:nx,1,1:(nz-nz_end)) / ) )
+#else
+        ! Write binary output
+        call string_concat(fname, bin_ext)
+        open(unit=13,file=fname,form='unformatted',convert=write_endian, access='direct',recl=nx*nz*rprec)
+        write(13,rec=1) thetai
+        close(13)
+#endif
+
+    end do
+
+    deallocate(thetai)
+#endif  
+!!end if scalar    
+    
+!======================================================
+! the itype 42 is added by Mingwei for pressure output
+!======================================================   
+elseif(itype==42) then
+    allocate(pi(nx,1,nz))
+   
+    !  Loop over all yplane locations
+    do j = 1, yplane_nloc
+        do k = 1, nz
+            do i = 1, nx
+
+                pi(i,1,k) = linear_interp(p(i,yplane(j) % istart,k),           &
+                p(i,yplane(j) % istart+1,k), dy, yplane(j) % ldiff)
+            end do
+        end do
+
+        ! Common file name portion for all output types
+        call string_splice(fname, path // 'output/pre.y-', yplane_loc(j), '.', &
+             jt_total-1)
+        ! Write binary output
+        call string_concat(fname, bin_ext)
+        open(unit=13,file=fname,form='unformatted',convert=write_endian, access='direct',recl=nx*nz*rprec)
+        write(13,rec=1) pi
+        close(13)
+    end do
+    deallocate(pi)
 !  Write instantaneous z-plane values
 elseif (itype==5) then
 
@@ -1009,10 +1257,7 @@ elseif (itype==5) then
         call string_splice(fname, path // 'output/vel.z-',                     &
                 zplane_loc(k), '.', jt_total)
 
-#ifdef PPCGNS
-        call string_concat(fname, '.cgns')
-#endif
-
+!specified for MPI
 #ifdef PPMPI
         if(zplane(k) % coord == coord) then
             do j = 1, Ny
@@ -1025,8 +1270,8 @@ elseif (itype==5) then
                          w_uv(i,j,zplane(k) % istart+1), dz, zplane(k) % ldiff)
                 end do
             end do
-
 #ifdef PPCGNS
+            call string_concat(fname, '.cgns')
             call warn("inst_write","Z plane writting is currently disabled.")
 !            ! Write CGNS Data
 !            ! Only the processor with data writes, the other one is written
@@ -1046,6 +1291,77 @@ elseif (itype==5) then
             write(13,rec=3) wi(1:nx,1:ny,1)
             close(13)
 #endif
+        end if
+#endif
+
+
+end do
+
+deallocate(ui,vi,wi)
+!!!!!!!    
+#ifdef PPSCALARS     
+    allocate(thetai(nx,ny,1))
+    !  Loop over all zplane locations
+    do k = 1, zplane_nloc
+        ! Common file name portion for all output types
+        call string_splice(fname, path // 'output/scalar.z-',                     &
+                zplane_loc(k), '.', jt_total)
+
+
+#ifdef PPMPI
+        if(zplane(k) % coord == coord) then
+            do j = 1, Ny
+                do i = 1, Nx
+                    thetai(i,j,1) = linear_interp(theta(i,j,zplane(k) % istart),       &
+                         theta(i,j,zplane(k) % istart+1), dz, zplane(k) % ldiff)
+                end do
+            end do
+#ifdef PPCGNS
+            call string_concat(fname, '.cgns')
+            call warn("inst_write","Z plane writting is currently disabled.")
+#else
+            call string_concat(fname, bin_ext)
+            open(unit=13,file=fname,form='unformatted',convert=write_endian,   &
+                            access='direct',recl=nx*ny*1*rprec)
+            write(13,rec=1) thetai(1:nx,1:ny,1)
+            close(13)
+#endif
+        end if
+#endif
+end do
+deallocate(thetai)
+#endif 
+!!end if scalars
+!======================================================
+! the itype 52 is added by Mingwei for pressure output
+!======================================================      
+elseif (itype==52) then
+    allocate(pi(nx,ny,1))
+    !  Loop over all zplane locations
+    do k = 1, zplane_nloc
+        ! Common file name portion for all output types
+        call string_splice(fname, path // 'output/pre.z-',                     &
+                zplane_loc(k), '.', jt_total-1)
+#ifdef PPMPI
+        if(zplane(k) % coord == coord) then
+            do j = 1, Ny
+                do i = 1, Nx
+                    pi(i,j,1) = linear_interp(p(i,j,zplane(k) % istart),       &
+                    p(i,j,zplane(k) % istart+1), dz, zplane(k) % ldiff)
+                end do
+            end do
+
+
+            call string_concat(fname, bin_ext)
+            open(unit=13,file=fname,form='unformatted',convert=write_endian,   &
+                            access='direct',recl=nx*ny*1*rprec)
+            write(13,rec=1) pi(1:nx,1:ny,1)
+            close(13)
+        end if
+#endif
+    end do
+    deallocate(pi)
+    
 !
 ! #ifdef PPMPI
 !         else
@@ -1057,10 +1373,6 @@ elseif (itype==5) then
 !            x(1:nx) , y(1:ny) , zplane_loc(k:k), 3,                            &
 !            (/ 'VelocityX', 'VelocityY', 'VelocityZ' /) )
 !#endif
-        end if
-#endif
-    end do
-    deallocate(ui,vi,wi)
 else
     write(*,*) 'Error: itype not specified properly to inst_write!'
     stop
@@ -1068,6 +1380,9 @@ end if
 
 deallocate(w_uv)
 nullify(x,y,z,zw)
+
+end subroutine inst_write
+
 
 #ifdef PPLVLSET
 contains
@@ -1166,8 +1481,6 @@ end subroutine force_tot
 !
 !return
 !end subroutine RHS_sync
-
-end subroutine inst_write
 
 !*******************************************************************************
 subroutine checkpoint ()

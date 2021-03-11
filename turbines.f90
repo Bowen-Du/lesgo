@@ -103,6 +103,8 @@ real(rprec), dimension(:), allocatable :: Ct_prime_time
 
 ! Input files
 character(:), allocatable :: input_folder
+! added by Du for project
+character(:), allocatable :: wind_turbine_1_performance_dat, wind_turbine_2_performance_dat, wind_turbine_3_performance_dat
 character(:), allocatable :: param_dat, theta1_dat, theta2_dat, Ct_prime_dat
 
 ! Output files
@@ -146,6 +148,10 @@ z => grid % z
 ! Input/Output file names
 allocate(input_folder, source = 'input_turbines/')
 allocate(param_dat, source = path // input_folder // 'param.dat')
+! added by Du for project
+allocate(wind_turbine_1_performance_dat, source = path // input_folder // 'wind_turbine_1_performance.dat')
+allocate(wind_turbine_2_performance_dat, source = path // input_folder // 'wind_turbine_2_performance.dat')
+allocate(wind_turbine_3_performance_dat, source = path // input_folder // 'wind_turbine_3_performance.dat')
 allocate(theta1_dat, source = path // input_folder // 'theta1.dat')
 allocate(theta2_dat, source = path // input_folder // 'theta2.dat')
 allocate(Ct_prime_dat, source = path // input_folder // 'Ct_prime.dat')
@@ -259,9 +265,10 @@ if (coord .eq. nproc-1) then
 end if
 
 ! Generate the files for the turbine forcing output
+! modified by Du for project
 if(coord==0) then
     do s=1,nloc
-        call string_splice( string1, path // 'turbine/turbine_', s, '.dat' )
+        call string_splice( string1, path // 'turbine/turbine_', s, '_', wind_farm%turbine(s)%turbine_type, '.dat' )
         open(newunit=forcing_fid(s), file=string1, status='unknown',           &
             form='formatted', position='append')
     end do
@@ -471,6 +478,8 @@ use param, only : pi, lbz
 use sim_param, only : u, v, w, fxa, fya, fza
 use functions, only : linear_interp, interp_to_uv_grid, interp_to_w_grid
 use mpi
+! added by Du for project
+use param, only : u_star
 implicit none
 
 character(*), parameter :: sub_name = mod_name // '.turbines_forcing'
@@ -487,6 +496,7 @@ real(rprec), dimension(nloc) :: u_vel_center, v_vel_center, w_vel_center
 real(rprec), allocatable, dimension(:,:,:) :: w_uv
 real(rprec), pointer, dimension(:) :: y, z
 real(rprec), dimension(nloc) :: buffer_array
+
 
 nullify(y,z)
 y => grid % y
@@ -585,8 +595,10 @@ do s=1,nloc
     !calculate total thrust force for each turbine  (per unit mass)
     !force is normal to the surface (calc from u_d_T, normal to surface)
     !write force to array that will be transferred via MPI
+    !modified by Du for project
+    p_Ct_prime = linear_interp(wind_farm%turbine(s)%u_d_array, wind_farm%turbine(s)%Ct_prime_array, abs(p_u_d_T)*u_star)
     p_f_n = -0.5*p_Ct_prime*abs(p_u_d_T)*p_u_d_T*0.25*pi*wind_farm%turbine(s)%dia**2
-
+    
     !write values to file
     if (modulo (jt_total, tbase) == 0 .and. coord == 0) then
         write( forcing_fid(s), *) total_time_dim, u_vel_center(s),         &
@@ -738,6 +750,9 @@ real(rprec) :: dummy, dummy2
 logical :: exst
 integer :: fid
 
+! added by Du for project
+integer :: nper, i
+
 ! Read parameters from file if needed
 if (read_param) then
     ! Check if file exists and open
@@ -755,10 +770,10 @@ if (read_param) then
         call warn(sub_name, param_dat // ' has more than num_x*num_y lines. '  &
                   // 'Only reading first num_x*num_y lines')
     end if
-
+    ! modified by Du for project
     ! Read from parameters file, which should be in this format:
     ! xloc [meters], yloc [meters], height [meters], dia [meters], thk [meters],
-    ! theta1 [degrees], theta2 [degrees], Ct_prime [-]
+    ! theta1 [degrees], theta2 [degrees], turbine_type [-]
     write(*,*) "Reading from", param_dat
     open(newunit=fid, file=param_dat, status='unknown', form='formatted',      &
         position='rewind')
@@ -766,9 +781,49 @@ if (read_param) then
         read(fid,*) wind_farm%turbine(k)%xloc, wind_farm%turbine(k)%yloc,      &
             wind_farm%turbine(k)%height, wind_farm%turbine(k)%dia,             &
             wind_farm%turbine(k)%thk, wind_farm%turbine(k)%theta1,             &
-            wind_farm%turbine(k)%theta2, wind_farm%turbine(k)%Ct_prime
+            wind_farm%turbine(k)%theta2, wind_farm%turbine(k)%turbine_type
     end do
     close(fid)
+    ! added by Du for project
+    do k = 1, nloc
+        select case (wind_farm%turbine(k)%turbine_type)
+        case(1)
+            nper = count_lines(wind_turbine_1_performance_dat)
+            allocate(wind_farm%turbine(k)%u_d_array(nper))
+            allocate(wind_farm%turbine(k)%Ct_prime_array(nper))
+            write(*,*) "Reading from", wind_turbine_1_performance_dat
+            open(newunit=fid, file=wind_turbine_1_performance_dat, status='unknown', form='formatted',      &
+            position='rewind')
+            do i = 1, nper
+                read(fid,*) wind_farm%turbine(k)%u_d_array(i), wind_farm%turbine(k)%Ct_prime_array(i)
+            end do
+            close(fid)
+        case(2)
+            nper = count_lines(wind_turbine_2_performance_dat)
+            allocate(wind_farm%turbine(k)%u_d_array(nper))
+            allocate(wind_farm%turbine(k)%Ct_prime_array(nper))
+            write(*,*) "Reading from", wind_turbine_2_performance_dat
+            open(newunit=fid, file=wind_turbine_2_performance_dat, status='unknown', form='formatted',      &
+            position='rewind')
+            do i = 1, nper
+                read(fid,*) wind_farm%turbine(k)%u_d_array(i), wind_farm%turbine(k)%Ct_prime_array(i)
+            end do
+            close(fid)
+        case(3)
+            nper = count_lines(wind_turbine_3_performance_dat)
+            allocate(wind_farm%turbine(k)%u_d_array(nper))
+            allocate(wind_farm%turbine(k)%Ct_prime_array(nper))
+            write(*,*) "Reading from", wind_turbine_3_performance_dat
+            open(newunit=fid, file=wind_turbine_3_performance_dat, status='unknown', form='formatted',      &
+            position='rewind')
+            do i = 1, nper
+                read(fid,*) wind_farm%turbine(k)%u_d_array(i), wind_farm%turbine(k)%Ct_prime_array(i)
+            end do
+            close(fid)
+        case default
+            call error (sub_name, 'invalid wind turbine type')
+        end select
+    end do
 
     ! Make lengths dimensionless
     do k = 1, nloc

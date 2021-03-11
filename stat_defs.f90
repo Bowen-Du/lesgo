@@ -49,6 +49,8 @@ end type zplane_t
 #ifdef PPTURBINES
 ! Single turbines
 type turbine_t
+    ! added by Du for project
+    integer :: turbine_type
     real(rprec) :: xloc, yloc, height, dia, thk
     ! term used for volume correction
     ! real(rprec) :: vol_c
@@ -66,6 +68,9 @@ type turbine_t
     real(rprec) :: Ct_prime
     ! running time-average of mean disk velocity
     real(rprec) :: u_d, u_d_T
+    ! added by Du for project
+    real(rprec), dimension(:), allocatable :: u_d_array
+    real(rprec), dimension(:), allocatable :: Ct_prime_array
     ! normal force on turbine disk
     real(rprec) :: f_n
     ! (nx,ny,nz) of unit normal for each turbine
